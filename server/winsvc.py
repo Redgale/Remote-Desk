@@ -51,10 +51,21 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
     args = ap.parse_args()
-    load_config(args.config)
+    # log first: under pythonw there is no console, so anything not logged is lost
     logdir = os.path.dirname(os.path.abspath(args.config))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
                         filename=os.path.join(logdir, "watchdog.log"))
+    try:
+        supervise(args)
+    except Exception:
+        log.exception("watchdog crashed")
+        raise
+
+
+def supervise(args):
+    load_config(args.config)
+    logdir = os.path.dirname(os.path.abspath(args.config))
+    log.info("watchdog starting (python %s)", sys.version.split()[0])
     # needed to put a SYSTEM token into another session and start processes with it
     winsys.enable_privileges("SeTcbPrivilege", "SeAssignPrimaryTokenPrivilege", "SeIncreaseQuotaPrivilege")
 

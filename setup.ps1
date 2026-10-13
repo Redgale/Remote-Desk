@@ -318,7 +318,7 @@ if ($up) { Ok "agent running on 127.0.0.1:$port" } else { Warn "agent not answer
 # ---- Tailscale Funnel
 if ($useTs) {
   $ts = Find-Tailscale
-  if (-not $ts) { Winget-Install "tailscale.tailscale"; $ts = Find-Tailscale }
+  if (-not $ts) { Winget-Install "Tailscale.Tailscale"; $ts = Find-Tailscale }
   if (-not $ts) { Warn "Tailscale not found; install it and run: tailscale funnel --bg $port" }
   else {
     $tsName = $TailscaleHostname; if (-not $tsName) { $tsName = $conf["TS_HOSTNAME"] }

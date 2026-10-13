@@ -383,6 +383,17 @@ async def run_cloudflared(port):
 
 
 def main():
+    try:
+        run()
+    except SystemExit:
+        raise
+    except Exception:
+        # under pythonw (Windows) there is no console: make sure a crash leaves a trace
+        logging.getLogger("rd").exception("server crashed")
+        raise
+
+
+def run():
     ap = argparse.ArgumentParser(description="RemoteFunnel remote desktop server")
     ap.add_argument("--config", help="KEY=VALUE config file")
     args = ap.parse_args()
