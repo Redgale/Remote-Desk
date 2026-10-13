@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RemoteFunnel</title>
+<style>
+  :root { --bg: #0e1013; --panel: #171a1f; --line: #2a2f37; --text: #e6e8eb; --muted: #8b929c; --accent: #5b9cff; --bad: #ff6b6b; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f3f4f6; --panel: #ffffff; --line: #d8dbe0; --text: #16181c; --muted: #5d636d; }
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #boot { min-height: 100%; display: grid; place-items: center; padding: 16px; box-sizing: border-box; }
+  .card { width: 100%; max-width: 400px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px; box-sizing: border-box; }
+  h1 { font-size: 18px; margin: 0 0 6px; }
+  p { margin: 0; color: var(--muted); }
+  #err { color: var(--bad); margin-top: 12px; display: none; }
+  form { display: none; margin-top: 14px; gap: 8px; }
+  input { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font: inherit; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 9px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="boot">
+  <div class="card">
+    <h1>RemoteFunnel</h1>
+    <p id="state">Loading…</p>
+    <div id="err"></div>
+    <form id="pick">
+      <input id="host" list="hosts" spellcheck="false" autocapitalize="off" placeholder="desktop.example.com" aria-label="Server">
+      <datalist id="hosts"></datalist>
+      <button>Open</button>
+    </form>
+  </div>
+</div>
+<script>
+// Launcher: open this file from anywhere (file://, a blob: tab, a USB stick). It fetches the
+// live client from your server (served with Access-Control-Allow-Origin: *) and runs it here,
+// so the client always matches the server version.
+// Everything lives inside this function: the client it loads shares the page's global scope.
+(() => {
+// setup.sh / setup.ps1 fill in this list with the addresses your machine is published at.
+const HOSTS = [/*RF_HOSTS*/];
+const $ = id => document.getElementById(id);
+for (const h of HOSTS) { const o = document.createElement("option"); o.value = h; $("hosts").append(o); }
+
+function ask(message, host) {
+  $("state").textContent = message;
+  $("pick").style.display = "flex";
+  $("host").value = host || HOSTS[0] || "";
+  $("host").focus();
+}
+
+async function boot(host) {
+  host = host.trim().replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "");
+  if (!host) return ask("Which server?");
+  $("state").textContent = `Loading the client from ${host}…`;
+  $("err").style.display = "none"; $("pick").style.display = "none";
+  try {
+    const scheme = /^(localhost|127\.|192\.168\.|10\.)/.test(host) ? "http" : "https";
+    const res = await fetch(`${scheme}://${host}/client.html`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+    if (!html.includes("RemoteFunnel")) throw new Error("that server didn't return the RemoteFunnel client");
+    // tell the client which server to default to, then replace this page with it
+    const preset = `<script>window.RF_SERVER = ${JSON.stringify(host)};<\/script>`;
+    document.open();
+    document.write(html.replace(/<head>/i, "<head>" + preset));
+    document.close();
+  } catch (e) {
+    $("err").textContent = `${host}: ${e.message || e}. The machine may be off or the tunnel down` +
+      (HOSTS.length > 1 ? " — try another address." : ".");
+    $("err").style.display = "block";
+    ask("Couldn't load the client.", host);
+  }
+}
+
+$("pick").addEventListener("submit", ev => { ev.preventDefault(); boot($("host").value); });
+HOSTS.length ? boot(HOSTS[0]) : ask("Which server?");
+})();
+</script>
+</body>
+</html>

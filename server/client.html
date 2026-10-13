@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RemoteFunnel</title>
+<style>
+  :root {
+    --bg: #0e1013; --panel: #171a1f; --line: #2a2f37; --text: #e6e8eb; --muted: #8b929c;
+    --accent: #5b9cff; --bad: #ff6b6b; --good: #4fd18b;
+  }
+  :root[data-theme="light"] { --bg: #f3f4f6; --panel: #ffffff; --line: #d8dbe0; --text: #16181c; --muted: #5d636d; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --bg: #f3f4f6; --panel: #ffffff; --line: #d8dbe0; --text: #16181c; --muted: #5d636d; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body.live { background: #000; overflow: hidden; }
+
+  #login { min-height: 100%; display: grid; place-items: center; padding: 16px; }
+  .card { width: 100%; max-width: 400px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 22px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 18px; font-size: 13px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+  input, select, button, textarea { font: inherit; color: var(--text); }
+  input[type=text], input[type=password], select, textarea {
+    width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .check { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: var(--muted); font-size: 13px; }
+  .primary { width: 100%; margin-top: 18px; padding: 10px; border: 0; border-radius: 8px;
+    background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  .primary:disabled { opacity: .6; cursor: default; }
+  #msg { min-height: 20px; margin-top: 10px; font-size: 13px; color: var(--bad); }
+
+  #stage { position: fixed; inset: 0; display: none; touch-action: none; }
+  body.live #stage { display: block; }
+  body.live #login { display: none; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; outline: none; }
+  canvas.dot { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Ccircle cx='4' cy='4' r='2.5' fill='white' stroke='black'/%3E%3C/svg%3E") 4 4, crosshair; }
+  canvas.none { cursor: none; }
+
+  /* the only always-visible UI: a small, faint, draggable button */
+  #fab { position: fixed; z-index: 6; width: 26px; height: 26px; margin: -13px 0 0 -13px; padding: 0;
+    border-radius: 50%; border: 1px solid rgba(255,255,255,.22); background: rgba(16,18,22,.55);
+    color: #fff; opacity: .3; cursor: pointer; display: grid; place-items: center;
+    touch-action: none; user-select: none; -webkit-user-select: none; transition: opacity .15s; }
+  #fab:hover, #fab.open, #fab.drag { opacity: 1; }
+  #fab svg { width: 14px; height: 14px; pointer-events: none; }
+
+  #menu { position: fixed; z-index: 7; display: none; width: 292px; max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px); overflow: auto; padding: 10px 12px 12px; border-radius: 12px;
+    background: rgba(18,20,24,.97); border: 1px solid #30353e; color: #e6e8eb; font-size: 13px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.45); }
+  #menu.open { display: block; }
+  #menu .stats { font: 11.5px/1.4 ui-monospace, monospace; color: #aab1bb; margin-bottom: 4px; }
+  #menu .lbl { color: #8b929c; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin: 10px 0 5px; }
+  #menu .r { display: flex; gap: 6px; align-items: center; }
+  #menu .r + .r { margin-top: 6px; }
+  #menu button { flex: 1; min-width: 0; background: #262a31; border: 1px solid #353a43; color: #e6e8eb;
+    border-radius: 7px; padding: 6px 8px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+  #menu button:hover { background: #2e333b; }
+  #menu button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #menu button.danger { color: #ffb4b4; }
+  #menu select { flex: 1; min-width: 0; width: auto; padding: 5px 6px; background: #0e1013; color: #e6e8eb;
+    border: 1px solid #353a43; border-radius: 7px; font-size: 13px; }
+  #menu textarea { width: 100%; height: 56px; resize: vertical; padding: 6px 8px; background: #0e1013;
+    color: #e6e8eb; border: 1px solid #353a43; border-radius: 7px; font-size: 13px; }
+  #menu input[type=range] { flex: 2; accent-color: var(--accent); }
+  #menu .hint { color: #8b929c; font-size: 11.5px; margin-top: 8px; }
+
+  #overlay { position: fixed; left: 8px; bottom: 8px; z-index: 5; display: none; pointer-events: none;
+    font: 11px/1.3 ui-monospace, monospace; color: #d6dae0; background: rgba(0,0,0,.5);
+    padding: 3px 7px; border-radius: 6px; }
+  #status { position: fixed; inset: 0; display: none; place-items: center; z-index: 3; color: #aab1bb; pointer-events: none; }
+  #kbd { position: fixed; left: -1000px; top: 0; width: 10px; height: 10px; opacity: 0; }
+</style>
+</head>
+<body>
+<div id="login">
+  <form class="card" id="form" autocomplete="on">
+    <h1>RemoteFunnel</h1>
+    <p class="sub">Remote desktop</p>
+    <input type="text" name="username" autocomplete="username" value="remotefunnel" hidden>
+    <label for="server">Server</label>
+    <input type="text" id="server" list="servers" placeholder="desktop.example.com" spellcheck="false" autocapitalize="off" required>
+    <datalist id="servers"></datalist>
+    <label for="pw">Password</label>
+    <input type="password" id="pw" name="password" autocomplete="current-password" required>
+    <div class="row">
+      <div><label for="res">Resolution</label>
+        <select id="res">
+          <option value="7680x4320">Native</option>
+          <option value="2560x1440">1440p</option>
+          <option value="1920x1080" selected>1080p</option>
+          <option value="1280x720">720p</option>
+        </select></div>
+      <div><label for="fps">FPS</label>
+        <select id="fps"><option>60</option><option>30</option></select></div>
+      <div><label for="br">Mbps</label>
+        <select id="br"><option>4</option><option>8</option><option selected>15</option><option>25</option><option>40</option><option>60</option></select></div>
+    </div>
+    <label class="check"><input type="checkbox" id="remember"> Remember password in this browser</label>
+    <button class="primary" id="go" type="submit">Connect</button>
+    <div id="msg" role="status"></div>
+  </form>
+</div>
+
+<div id="stage">
+  <canvas id="screen" class="dot" tabindex="0"></canvas>
+  <button id="fab" type="button" aria-label="Menu" title="Menu (drag to move)">
+    <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3" cy="8" r="1.6"/><circle cx="8" cy="8" r="1.6"/><circle cx="13" cy="8" r="1.6"/></svg>
+  </button>
+  <div id="menu" role="dialog" aria-label="Remote desktop menu">
+    <div class="stats" id="mStats">–</div>
+    <div class="r"><button id="bFull">Fullscreen</button><button id="bLock" title="Relative mouse for games. Esc releases it.">Lock mouse</button></div>
+    <div class="lbl">Cursor</div>
+    <div class="r" id="curSeg"><button data-c="dot">Dot</button><button data-c="default">Arrow</button><button data-c="none">Hidden</button></div>
+    <div class="lbl">Quality</div>
+    <div class="r">
+      <select id="qRes" title="Resolution"><option value="7680x4320">Native</option><option value="2560x1440">1440p</option>
+        <option value="1920x1080">1080p</option><option value="1280x720">720p</option></select>
+      <select id="qFps" title="Frame rate"><option value="60">60 fps</option><option value="30">30 fps</option></select>
+      <select id="qBr" title="Bitrate"><option value="4">4 Mb/s</option><option value="8">8 Mb/s</option><option value="15">15 Mb/s</option>
+        <option value="25">25 Mb/s</option><option value="40">40 Mb/s</option><option value="60">60 Mb/s</option></select>
+    </div>
+    <div class="lbl">Audio</div>
+    <div class="r"><button id="bAudio" style="flex:1">Sound on</button><input type="range" id="vol" min="0" max="100" aria-label="Volume"></div>
+    <div class="lbl">Keys</div>
+    <div class="r"><button id="bSuper">Super</button><button id="bCAD">Ctrl+Alt+Del</button><button id="bKbd" title="Show the on-screen keyboard (phones/tablets)">Keyboard</button></div>
+    <div class="lbl">Type text on the remote</div>
+    <textarea id="pasteText" placeholder="Paste here, then Type it"></textarea>
+    <div class="r"><button id="pasteSend">Type it</button></div>
+    <div class="r" style="margin-top:10px"><button id="bStats">Stats overlay</button><button id="bQuit" class="danger">Disconnect</button></div>
+    <div class="hint">Drag the ••• button to move it. Esc or a click outside closes this menu.</div>
+  </div>
+  <div id="overlay"></div>
+  <div id="status"></div>
+  <textarea id="kbd" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+</div>
+
+<script>
+"use strict";
+// servers this machine is published at (filled in by the server when it serves this page)
+const DEFAULT_SERVERS = [/*RF_SERVERS*/];
+const $ = id => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem("rf." + k); } catch { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem("rf." + k) : localStorage.setItem("rf." + k, v); } catch {} },
+};
+
+// ---------- login form ----------
+const selfServed = /^https?:$/.test(location.protocol) && location.host;
+const known = new Set(DEFAULT_SERVERS);
+if (selfServed) known.add(location.host);
+// a launcher page that fetched this file sets window.RF_SERVER to the host it came from
+if (window.RF_SERVER) known.add(window.RF_SERVER);
+for (const s of known) { const o = document.createElement("option"); o.value = s; $("servers").append(o); }
+$("server").value = window.RF_SERVER || store.get("server") || (selfServed ? location.host : DEFAULT_SERVERS[0] || "");
+for (const k of ["res", "fps", "br"]) { const v = store.get(k); if (v) $(k).value = v; }
+const savedPw = store.get("pw");
+if (savedPw) { $("pw").value = savedPw; $("remember").checked = true; }
+
+if (!("VideoDecoder" in window)) {
+  $("msg").textContent = "This browser has no WebCodecs (needs a recent Chrome/Edge/Firefox/Safari, and a secure context).";
+}
+
+function wsUrl(s) {
+  s = s.trim();
+  if (!/^[a-z]+:\/\//i.test(s)) s = (/^(localhost|127\.|192\.168\.|10\.)/.test(s) ? "ws://" : "wss://") + s;
+  const u = new URL(s.replace(/^http/i, "ws"));
+  if (u.pathname === "/" || u.pathname === "") u.pathname = "/ws";
+  return u.toString();
+}
+
+$("form").addEventListener("submit", ev => {
+  ev.preventDefault();
+  store.set("server", $("server").value.trim());
+  for (const k of ["res", "fps", "br"]) store.set(k, $(k).value);
+  store.set("pw", $("remember").checked ? $("pw").value : null);
+  $("qRes").value = $("res").value; $("qFps").value = $("fps").value; $("qBr").value = $("br").value;
+  ensureAudio();          // must happen inside the click: browsers only allow sound after a gesture
+  connect();
+});
+
+// ---------- session ----------
+let ws = null, decoder = null, waitKey = true, live = false, wanted = false;
+const canvas = $("screen");
+const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+let frames = 0, lastStats = { rtt: 0, kbps: 0, drop: 0 }, ping = 0, retry = 0;
+
+function cfg() {
+  const [w, h] = $("qRes").value.split("x").map(Number);
+  return { w, h, fps: +$("qFps").value, br: +$("qBr").value, audio: audioOn };
+}
+
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+function setStatus(t) { $("status").textContent = t || ""; $("status").style.display = t ? "grid" : "none"; }
+
+function connect() {
+  let url;
+  try { url = wsUrl($("server").value); } catch { $("msg").textContent = "Bad server address"; return; }
+  $("msg").textContent = ""; $("go").disabled = true; $("go").textContent = "Connecting…";
+  wanted = true;
+  const sock = new WebSocket(url);
+  sock.binaryType = "arraybuffer";
+  ws = sock;
+  let authed = false;
+  sock.onopen = () => sock.send(JSON.stringify({ t: "auth", token: $("pw").value, cfg: cfg() }));
+  sock.onmessage = ev => {
+    if (typeof ev.data === "string") {
+      const m = JSON.parse(ev.data);
+      if (m.t === "hello") { authed = true; retry = 0; serverAudio = !!m.audio; enterLive(); setStatus("Waiting for video…"); }
+      else if (m.t === "st") lastStats = m;
+      else if (m.t === "pong") ping = Math.round(performance.now() - m.c);
+      return;
+    }
+    onBinary(new Uint8Array(ev.data));
+  };
+  sock.onclose = ev => {
+    if (ws !== sock) return;
+    ws = null; closeDecoder(); closeAudioDecoder();
+    const reason = ev.reason || (authed ? "Connection lost" : "Could not connect");
+    if (authed && wanted && ev.code !== 4002 && ev.code !== 4001) {
+      // transient drop: reconnect in place
+      setStatus(reason + " — reconnecting…");
+      setTimeout(() => wanted && connect(), Math.min(5000, 500 * 2 ** retry++));
+      return;
+    }
+    leaveLive(reason + (ev.code >= 4000 ? "" : ` (code ${ev.code})`));
+  };
+}
+
+function enterLive() {
+  if (live) return;
+  live = true; document.body.classList.add("live"); canvas.focus();
+  placeFab();
+}
+function leaveLive(msg) {
+  live = false; wanted = false; document.body.classList.remove("live"); closeMenu();
+  $("go").disabled = false; $("go").textContent = "Connect"; $("msg").textContent = msg || "";
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  if (document.pointerLockElement) document.exitPointerLock();
+  setStatus("");
+}
+
+// ---------- video ----------
+function closeDecoder() { if (decoder && decoder.state !== "closed") try { decoder.close(); } catch {} decoder = null; }
+
+function hex2(n) { return n.toString(16).padStart(2, "0"); }
+
+async function configure(avcc) {
+  closeDecoder();
+  const codec = "avc1." + hex2(avcc[1]) + hex2(avcc[2]) + hex2(avcc[3]);
+  const base = { codec, description: avcc, optimizeForLatency: true };
+  let config = { ...base, hardwareAcceleration: "prefer-hardware" };
+  try { if (!(await VideoDecoder.isConfigSupported(config)).supported) config = base; } catch { config = base; }
+  decoder = new VideoDecoder({
+    output: frame => {
+      if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+        canvas.width = frame.displayWidth; canvas.height = frame.displayHeight;
+      }
+      ctx.drawImage(frame, 0, 0);
+      const seq = frame.timestamp;
+      frame.close();
+      frames++;
+      send({ t: "a", s: seq });
+      setStatus("");
+    },
+    error: err => { console.warn("decoder error", err); waitKey = true; send({ t: "kf" }); },
+  });
+  decoder.configure(config);
+  waitKey = true;
+}
+
+let pendingConfig = Promise.resolve();
+function onBinary(b) {
+  const type = b[0];
+  if (type === 0) { pendingConfig = configure(b.slice(1)); return; }
+  if (type === 2) { playOpus(b.subarray(1)); return; }
+  if (type === 3) { configureAudio(b.slice(1)); return; }
+  if (type !== 1) return;
+  const key = b[1] === 1;
+  const seq = (b[2] << 24 | b[3] << 16 | b[4] << 8 | b[5]) >>> 0;
+  const data = b.subarray(6);
+  pendingConfig.then(() => {
+    if (!decoder || decoder.state !== "configured") return;
+    if (waitKey && !key) return;
+    waitKey = false;
+    try { decoder.decode(new EncodedVideoChunk({ type: key ? "key" : "delta", timestamp: seq, data })); }
+    catch (err) { console.warn(err); waitKey = true; send({ t: "kf" }); }
+  });
+}
+
+// ---------- audio: Opus packets -> AudioDecoder -> scheduled AudioBuffers ----------
+let actx = null, gain = null, adec = null, nextT = 0, aTs = 0, serverAudio = false;
+let audioOn = store.get("audio") !== "0";
+let volume = +(store.get("vol") ?? 80);
+const TARGET = 0.06, MAX_AHEAD = 0.25;      // seconds of audio buffered: aim / give up and skip
+
+function ensureAudio() {
+  try {
+    if (!actx) {
+      actx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive", sampleRate: 48000 });
+      gain = actx.createGain(); gain.gain.value = volume / 100; gain.connect(actx.destination);
+    }
+    if (actx.state === "suspended") actx.resume().catch(() => {});
+  } catch (err) { console.warn("no audio", err); }
+}
+function closeAudioDecoder() { if (adec && adec.state !== "closed") try { adec.close(); } catch {} adec = null; }
+function configureAudio(head) {
+  closeAudioDecoder();
+  if (!("AudioDecoder" in window)) return;
+  adec = new AudioDecoder({ output: scheduleAudio, error: err => { console.warn("audio decoder", err); adec = null; } });
+  adec.configure({ codec: "opus", sampleRate: 48000, numberOfChannels: head[9] || 2 });
+  aTs = 0;
+}
+function playOpus(data) {
+  if (!adec || adec.state !== "configured" || !audioOn) return;
+  try { adec.decode(new EncodedAudioChunk({ type: "key", timestamp: aTs, data })); } catch (err) { console.warn(err); }
+  aTs += 20000;
+}
+function scheduleAudio(ad) {
+  try {
+    if (!actx || !audioOn || actx.state !== "running") return;
+    const n = ad.numberOfFrames, chs = ad.numberOfChannels;
+    const buf = actx.createBuffer(chs, n, ad.sampleRate);
+    for (let c = 0; c < chs; c++) {
+      const tmp = new Float32Array(n);
+      ad.copyTo(tmp, { planeIndex: c, format: "f32-planar" });
+      buf.copyToChannel(tmp, c);
+    }
+    const now = actx.currentTime;
+    if (nextT < now + 0.005) nextT = now + TARGET;    // underrun: rebuild a small cushion
+    else if (nextT > now + MAX_AHEAD) return;          // too far behind: skip to catch up
+    const src = actx.createBufferSource();
+    src.buffer = buf; src.connect(gain); src.start(nextT);
+    nextT += buf.duration;
+  } finally { ad.close(); }
+}
+
+// ---------- stats ----------
+let showOverlay = store.get("overlay") === "1";
+setInterval(() => {
+  if (!live) return;
+  send({ t: "ping", c: performance.now() });
+  const text = `${frames} fps · ${(lastStats.kbps / 1000).toFixed(1)} Mb/s · ping ${ping} ms · frame ${lastStats.rtt} ms`
+    + (lastStats.drop ? ` · drop ${lastStats.drop}` : "");
+  $("mStats").textContent = text + (serverAudio ? (lastStats.audio ? " · ♪" : "") : " · no audio");
+  $("overlay").textContent = text;
+  $("overlay").style.display = showOverlay ? "block" : "none";
+  frames = 0;
+}, 1000);
+
+// ---------- input ----------
+function videoRect() {
+  const r = canvas.getBoundingClientRect();
+  const vw = canvas.width || 16, vh = canvas.height || 9;
+  const s = Math.min(r.width / vw, r.height / vh);
+  const w = vw * s, h = vh * s;
+  return { x: r.left + (r.width - w) / 2, y: r.top + (r.height - h) / 2, w, h };
+}
+function absPos(ev) {
+  const v = videoRect();
+  const clamp = n => Math.max(0, Math.min(65535, Math.round(n)));
+  return { x: clamp((ev.clientX - v.x) / v.w * 65535), y: clamp((ev.clientY - v.y) / v.h * 65535) };
+}
+const locked = () => document.pointerLockElement === canvas;
+
+let lastMove = null, moveQueued = false;
+canvas.addEventListener("pointermove", ev => {
+  if (!live) return;
+  if (locked()) { send({ t: "r", x: ev.movementX, y: ev.movementY }); return; }
+  lastMove = absPos(ev);
+  if (!moveQueued) { moveQueued = true; queueMicrotask(() => { moveQueued = false; send({ t: "m", ...lastMove }); }); }
+});
+canvas.addEventListener("pointerdown", ev => {
+  if (!live) return;
+  ev.preventDefault(); canvas.focus(); ensureAudio();
+  if (!locked()) { canvas.setPointerCapture(ev.pointerId); send({ t: "m", ...absPos(ev) }); }
+  send({ t: "b", b: ev.button, d: 1 });
+});
+canvas.addEventListener("pointerup", ev => { if (live) { ev.preventDefault(); send({ t: "b", b: ev.button, d: 0 }); } });
+canvas.addEventListener("contextmenu", ev => ev.preventDefault());
+canvas.addEventListener("wheel", ev => {
+  if (!live) return;
+  ev.preventDefault();
+  const k = ev.deltaMode === 1 ? 40 : ev.deltaMode === 2 ? 1200 : 1.2;
+  send({ t: "w", x: Math.round(ev.deltaX * k), y: Math.round(ev.deltaY * k) });
+}, { passive: false });
+
+// keys typed into the menu's own fields stay local; everything else goes to the remote
+const uiFocused = () => {
+  const a = document.activeElement;
+  return !!(a && a.closest && a.closest("#menu") && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName));
+};
+let swallowKeyUp = null;     // Esc that closed the menu: its release stays local too
+window.addEventListener("keydown", ev => {
+  if (!live || ev.target === $("kbd")) return;
+  if (menuOpen() && ev.key === "Escape") { ev.preventDefault(); closeMenu(); swallowKeyUp = ev.code; return; }
+  if (uiFocused()) return;
+  ev.preventDefault();
+  if (!ev.repeat) send({ t: "k", c: ev.code, d: 1 });
+}, true);
+window.addEventListener("keyup", ev => {
+  if (ev.code === swallowKeyUp) { swallowKeyUp = null; ev.preventDefault(); return; }
+  if (!live || uiFocused() || ev.target === $("kbd")) return;
+  ev.preventDefault();
+  send({ t: "k", c: ev.code, d: 0 });
+}, true);
+const releaseAll = () => live && send({ t: "rel" });
+window.addEventListener("blur", releaseAll);
+document.addEventListener("visibilitychange", releaseAll);
+
+// mobile soft keyboard: type whatever it produces
+$("kbd").addEventListener("beforeinput", ev => {
+  if (ev.inputType === "deleteContentBackward") { tap("Backspace"); ev.preventDefault(); }
+  else if (ev.inputType === "insertLineBreak") { tap("Enter"); ev.preventDefault(); }
+});
+$("kbd").addEventListener("input", ev => { if (ev.data) send({ t: "type", text: ev.data }); $("kbd").value = ""; });
+$("kbd").addEventListener("keydown", ev => {
+  const special = ["Enter", "Backspace", "Tab", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+  if (special.includes(ev.key) && ev.code) { ev.preventDefault(); send({ t: "k", c: ev.code, d: 1 }); send({ t: "k", c: ev.code, d: 0 }); }
+});
+function tap(code) { send({ t: "k", c: code, d: 1 }); send({ t: "k", c: code, d: 0 }); }
+
+// ---------- menu button: small, draggable, snaps to the left/right edge ----------
+const fab = $("fab"), menu = $("menu");
+let fabPos = (() => { try { return JSON.parse(store.get("fab")) || null; } catch { return null; } })() || { side: "right", y: 0.5 };
+function placeFab() {
+  const x = fabPos.side === "left" ? 18 : innerWidth - 18;
+  const y = Math.max(18, Math.min(innerHeight - 18, fabPos.y * innerHeight));
+  fab.style.left = x + "px"; fab.style.top = y + "px";
+  if (menuOpen()) placeMenu();
+}
+addEventListener("resize", placeFab);
+const menuOpen = () => menu.classList.contains("open");
+function placeMenu() {
+  const fr = fab.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
+  const left = fabPos.side === "left" ? fr.right + 8 : fr.left - 8 - mw;
+  menu.style.left = Math.max(8, Math.min(innerWidth - mw - 8, left)) + "px";
+  menu.style.top = Math.max(8, Math.min(innerHeight - mh - 8, fr.top + fr.height / 2 - mh / 2)) + "px";
+}
+function openMenu() { menu.classList.add("open"); fab.classList.add("open"); placeMenu(); syncMenu(); }
+function closeMenu() {
+  menu.classList.remove("open"); fab.classList.remove("open");
+  if (document.activeElement && menu.contains(document.activeElement)) document.activeElement.blur();
+  if (live) canvas.focus();
+}
+let drag = null;
+fab.addEventListener("pointerdown", ev => {
+  ev.preventDefault(); ev.stopPropagation();
+  fab.setPointerCapture(ev.pointerId);
+  drag = { x: ev.clientX, y: ev.clientY, moved: false };
+});
+fab.addEventListener("pointermove", ev => {
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) < 6) return;
+  drag.moved = true; fab.classList.add("drag");
+  fab.style.left = ev.clientX + "px"; fab.style.top = ev.clientY + "px";
+  if (menuOpen()) closeMenu();
+});
+fab.addEventListener("pointerup", ev => {
+  if (!drag) return;
+  if (drag.moved) {
+    fabPos = { side: ev.clientX < innerWidth / 2 ? "left" : "right", y: Math.max(0, Math.min(1, ev.clientY / innerHeight)) };
+    store.set("fab", JSON.stringify(fabPos)); placeFab();
+  } else {
+    menuOpen() ? closeMenu() : openMenu();
+  }
+  fab.classList.remove("drag"); drag = null;
+});
+// a click outside the open menu just closes it: neither its press nor its release reaches the
+// remote machine
+let swallowPointer = null;
+document.addEventListener("pointerdown", ev => {
+  if (!menuOpen() || menu.contains(ev.target) || fab.contains(ev.target)) return;
+  ev.preventDefault(); ev.stopImmediatePropagation(); closeMenu();
+  swallowPointer = ev.pointerId;
+}, true);
+document.addEventListener("pointerup", ev => {
+  if (ev.pointerId !== swallowPointer) return;
+  swallowPointer = null; ev.preventDefault(); ev.stopImmediatePropagation();
+}, true);
+// menu buttons never keep keyboard focus, so later keypresses still reach the remote
+menu.addEventListener("mousedown", ev => { if (ev.target.closest("button")) ev.preventDefault(); });
+
+// ---------- menu actions ----------
+function syncMenu() {
+  $("bFull").classList.toggle("on", !!document.fullscreenElement);
+  $("bLock").classList.toggle("on", locked());
+  for (const b of $("curSeg").children) b.classList.toggle("on", b.dataset.c === cursor);
+  $("bAudio").textContent = !serverAudio ? "No audio on server" : audioOn ? "Sound on" : "Sound off";
+  $("bAudio").classList.toggle("on", serverAudio && audioOn);
+  $("bAudio").disabled = !serverAudio;
+  $("vol").value = volume;
+  $("bStats").classList.toggle("on", showOverlay);
+}
+
+$("bFull").onclick = async () => {
+  if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+  else {
+    await document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+    try { await navigator.keyboard?.lock(); } catch {}
+  }
+  closeMenu();
+};
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement) try { navigator.keyboard?.unlock(); } catch {}
+  syncMenu(); setTimeout(placeFab, 50);
+});
+$("bLock").onclick = () => {
+  closeMenu();
+  canvas.requestPointerLock({ unadjustedMovement: true })?.catch?.(() => canvas.requestPointerLock());
+};
+document.addEventListener("pointerlockchange", syncMenu);
+
+let cursor = ["dot", "default", "none"].includes(store.get("cursor")) ? store.get("cursor") : "dot";
+function applyCursor() { canvas.className = cursor === "default" ? "" : cursor; syncMenu(); }
+applyCursor();
+for (const b of $("curSeg").children) b.onclick = () => { cursor = b.dataset.c; store.set("cursor", cursor); applyCursor(); };
+
+for (const id of ["qRes", "qFps", "qBr"]) $(id).onchange = () => {
+  store.set({ qRes: "res", qFps: "fps", qBr: "br" }[id], $(id).value);
+  send({ t: "cfg", ...cfg() });
+};
+
+$("bAudio").onclick = () => {
+  audioOn = !audioOn; store.set("audio", audioOn ? "1" : "0");
+  if (audioOn) ensureAudio();
+  send({ t: "audio", on: audioOn }); syncMenu();
+};
+$("vol").oninput = () => {
+  volume = +$("vol").value; store.set("vol", String(volume));
+  if (gain) gain.gain.value = volume / 100;
+};
+
+$("bKbd").onclick = () => { closeMenu(); $("kbd").focus(); };
+$("bSuper").onclick = () => tap("MetaLeft");
+$("bCAD").onclick = () => {
+  for (const c of ["ControlLeft", "AltLeft", "Delete"]) send({ t: "k", c, d: 1 });
+  for (const c of ["Delete", "AltLeft", "ControlLeft"]) send({ t: "k", c, d: 0 });
+};
+$("pasteText").addEventListener("focus", async () => {
+  if ($("pasteText").value) return;
+  try { $("pasteText").value = await navigator.clipboard.readText(); } catch {}
+});
+$("pasteSend").onclick = () => {
+  if (!$("pasteText").value) return;
+  send({ t: "type", text: $("pasteText").value });
+  $("pasteText").value = ""; closeMenu();
+};
+$("bStats").onclick = () => { showOverlay = !showOverlay; store.set("overlay", showOverlay ? "1" : "0"); syncMenu(); };
+$("bQuit").onclick = () => { wanted = false; if (ws) ws.close(1000, "bye"); leaveLive(""); };
+</script>
+</body>
+</html>
