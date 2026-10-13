@@ -294,9 +294,11 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 if ($SystemMode) {
   # config holds the password hash and tunnel token: SYSTEM and Administrators only
   & icacls $Dir /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
-  # let our SYSTEM agent generate Ctrl+Alt+Del (SendSAS): 3 = services and ease-of-access apps
-  New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Force | Out-Null
-  Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name SoftwareSASGeneration -Value 3 -Type DWord
+  # let our SYSTEM agent generate Ctrl+Alt+Del (SendSAS): 3 = services and ease-of-access apps.
+  # Only this one value is written; never New-Item -Force here (on an existing key that would try
+  # to replace the whole key, which also holds the UAC settings).
+  & reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v SoftwareSASGeneration /t REG_DWORD /d 3 /f | Out-Null
+  if ($LASTEXITCODE) { Warn "couldn't enable remote Ctrl+Alt+Del (SoftwareSASGeneration); everything else still works" }
   Say "Registering the boot task (runs as SYSTEM)"
   $action = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$Dir\winsvc.py`" --config `"$Conf`"" -WorkingDirectory $Dir
   $trigger = New-ScheduledTaskTrigger -AtStartup
