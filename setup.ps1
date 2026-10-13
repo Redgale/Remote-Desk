@@ -59,7 +59,7 @@ elseif (($Status -or $Uninstall -or $SetPassword) -and -not (Test-Path (Join-Pat
         -and (Test-Path (Join-Path $UserDir "config.env"))) { $SystemMode = $false }
 else { $SystemMode = $true }
 if ($SystemMode) { $Dir = $SysDir } else { $Dir = $UserDir }
-$Conf = Join-Path $Dir "config.env"
+$ConfFile = Join-Path $Dir "config.env"
 
 if ($SystemMode -and -not (Test-Admin)) {
   Say "Administrator rights are needed (for the sign-in screen, UAC prompts and Ctrl+Alt+Del)."
@@ -84,7 +84,7 @@ function Ask($q, $def = "") {
 function YesNo($q, $def = "n") { return ((Ask "$q (y/n)" $def) -match '^[Yy]') }
 
 # ---- KEY=VALUE config (UTF-8 without BOM, so Python reads the first key correctly)
-function Read-Conf($path = $Conf) {
+function Read-Conf($path = $ConfFile) {
   $h = [ordered]@{}
   if (Test-Path $path) {
     foreach ($line in [IO.File]::ReadAllLines($path)) {
@@ -96,7 +96,7 @@ function Read-Conf($path = $Conf) {
 function Write-Conf($h) {
   New-Item -ItemType Directory -Force -Path $Dir | Out-Null
   $lines = foreach ($k in $h.Keys) { "$k=$($h[$k])" }
-  [IO.File]::WriteAllLines($Conf, [string[]]$lines, (New-Object Text.UTF8Encoding($false)))
+  [IO.File]::WriteAllLines($ConfFile, [string[]]$lines, (New-Object Text.UTF8Encoding($false)))
 }
 
 function Get-Sha256Hex($s) {
@@ -300,12 +300,12 @@ if ($SystemMode) {
   & reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v SoftwareSASGeneration /t REG_DWORD /d 3 /f | Out-Null
   if ($LASTEXITCODE) { Warn "couldn't enable remote Ctrl+Alt+Del (SoftwareSASGeneration); everything else still works" }
   Say "Registering the boot task (runs as SYSTEM)"
-  $action = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$Dir\winsvc.py`" --config `"$Conf`"" -WorkingDirectory $Dir
+  $action = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$Dir\winsvc.py`" --config `"$ConfFile`"" -WorkingDirectory $Dir
   $trigger = New-ScheduledTaskTrigger -AtStartup
   $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 } else {
   Say "Registering the logon task"
-  $action = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$Dir\app.py`" --config `"$Conf`"" -WorkingDirectory $Dir
+  $action = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$Dir\app.py`" --config `"$ConfFile`"" -WorkingDirectory $Dir
   $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
   $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 }

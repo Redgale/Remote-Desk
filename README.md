@@ -139,7 +139,8 @@ Files:
 | `launcher/RemoteFunnel.html` | Template for the `file://` launcher |
 | `make_launcher.py` | Builds `RemoteFunnel.html` from the template and your addresses |
 
-Tests: `python -m unittest discover -s tests -v` (some tests need ffmpeg and python-evdev).
+Tests: `python -m unittest discover -s tests -v` (some tests need ffmpeg and python-evdev), and
+`pwsh -File tests/check_ps1.ps1 setup.ps1`, which catches PowerShell variables that differ only in case.
 
 ## Security
 
